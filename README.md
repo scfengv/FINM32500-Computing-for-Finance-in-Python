@@ -1,1 +1,1 @@
-# FINM32500-HW6
+# FINM32500-Computing for Finance in Python
