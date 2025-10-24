@@ -51,7 +51,6 @@ class BloombergXMLAdapter:
         timestamp = self.xml_element.find("timestamp").text
         
         return MarketDataPoint(
-            # timestamp = timestamp,
             timestamp = timestamp,
             symbol = symbol,
             price = price
