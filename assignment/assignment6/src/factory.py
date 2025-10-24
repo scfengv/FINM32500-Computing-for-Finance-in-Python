@@ -1,4 +1,4 @@
-# models.py
+# factory.py
 import pandas as pd
 
 class Stock:
