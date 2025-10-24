@@ -20,7 +20,6 @@ class Config:
         
         return cls._instance
     
-    
 if __name__ == "__main__":
     config1 = Config()
     config2 = Config()
