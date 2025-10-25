@@ -1,5 +1,6 @@
 # Design Patterns in Financial Software Architecture
 ## Repo Layout
+```
 assignment/assignment6/
 ├─ src/
 │  ├─ patterns/
@@ -34,6 +35,7 @@ assignment/assignment6/
 │
 ├─ design_report.md
 └─ README.md
+```
 
 ## Run Quickly
 
