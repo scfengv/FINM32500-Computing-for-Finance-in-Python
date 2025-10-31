@@ -89,7 +89,7 @@ def main(data: dict) -> Portfolio:
     return builder.build()
 
 if __name__ == "__main__":
-    data = load_json("../data/portfolio_structure.json")
+    data = load_json("data/portfolio_structure.json")
     portfolio = main(data)
     portfolio.display()
     
