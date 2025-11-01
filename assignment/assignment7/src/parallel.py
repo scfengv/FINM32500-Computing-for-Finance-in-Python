@@ -3,12 +3,13 @@ import threading
 import tracemalloc
 import numpy as np
 import pandas as pd
+import polars as pl
 
 from time import time
-from data_loader import load_csv_with_pandas
+from data_loader import load_csv_with_pandas, load_csv_with_polars
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 
-def Calculate_Metrics_for_Symbol(df, symbol):
+def Calculate_Metrics_for_Symbol_Pandas(df, symbol):
     symbol_df = df[df["symbol"] == symbol].copy()
     prices = symbol_df["price"]
         
@@ -29,25 +30,47 @@ def Calculate_Metrics_for_Symbol(df, symbol):
         'rolling_sharpe': rolling_sharpe,
         'price': prices
     })
+    
+def Calculate_Metrics_for_Symbol_Polars(df, symbol):
+    symbol_df = df.filter(pl.col("symbol") == symbol)
+    prices = symbol_df["price"]
+        
+    rolling_ma = prices.rolling_mean(window_size=20)
+    rolling_std = prices.rolling_std(window_size=20)
 
-def Rolling_Sequential(df: pd.DataFrame):
+    # Calculate returns and Sharpe
+    returns = prices.pct_change()
+    rolling_sharpe = (
+        returns.rolling_mean(window_size=20) / 
+        returns.rolling_std(window_size=20) *
+        np.sqrt(252)
+    )
+    
+    return (symbol, {
+        'rolling_ma': rolling_ma,
+        'rolling_std': rolling_std,
+        'rolling_sharpe': rolling_sharpe,
+        'price': prices
+    })
+
+def Rolling_Sequential(df: pd.DataFrame, Metrics_Function):
     """Baseline: Sequential processing."""
     symbols = ["AAPL", "MSFT", "SPY"]
     results = {}
     
     for symbol in symbols:
-        _, metrics = Calculate_Metrics_for_Symbol(df, symbol)
+        _, metrics = Metrics_Function(df, symbol)
         results[symbol] = metrics
     
     return results
 
-def Rolling_with_Threading(df: pd.DataFrame):
+def Rolling_with_Threading(df: pd.DataFrame, Metrics_Function):
     symbols = ["AAPL", "MSFT", "SPY"]
     result = {}
 
     with ThreadPoolExecutor(max_workers=len(symbols)) as executor:
         futures = {
-            executor.submit(Calculate_Metrics_for_Symbol, df, symbol): symbol for symbol in symbols
+            executor.submit(Metrics_Function, df, symbol): symbol for symbol in symbols
         }
 
     # as_completed: a generator that yields futures in the order they finish, not in the order you submitted them.
@@ -57,13 +80,13 @@ def Rolling_with_Threading(df: pd.DataFrame):
 
     return result
 
-def Rolling_with_MultiProcessing(df: pd.DataFrame):
+def Rolling_with_MultiProcessing(df: pd.DataFrame, Metrics_Function):
     symbols = ["AAPL", "MSFT", "SPY"]
     result = {}
 
     with ProcessPoolExecutor(max_workers=len(symbols)) as executor:
         futures = {
-            executor.submit(Calculate_Metrics_for_Symbol, df, symbol) for symbol in symbols
+            executor.submit(Metrics_Function, df, symbol) for symbol in symbols
         }
 
     for future in as_completed(futures):
@@ -123,10 +146,10 @@ def Profiling(func, *args, **kwargs):
     
     return result, execution_time, memory_MB, cpu
 
-def benchmark(name, func, path):
+def benchmark(name, func, path, metrics_function):
     """Benchmark a function with detailed profiling."""
-    result, exec_time, memory, cpu = Profiling(func, path)
-    
+    result, exec_time, memory, cpu = Profiling(func, path, metrics_function)
+
     print(f"\n{'='*50}")
     print(f"{name}")
     print(f"{'='*50}")
@@ -139,8 +162,15 @@ def benchmark(name, func, path):
 
 if __name__ == "__main__":
     data_path = "data/market_data-1.csv"
-    df = load_csv_with_pandas(data_path)
 
-    benchmark("Sequential Processing", Rolling_Sequential, df)
-    benchmark("Threading Processing", Rolling_with_Threading, df)
-    benchmark("Multiprocessing Processing", Rolling_with_MultiProcessing, df)
+    print("\n===== Benchmarking Pandas =====")
+    df = load_csv_with_pandas(data_path)
+    benchmark("Sequential Processing", Rolling_Sequential, df, Calculate_Metrics_for_Symbol_Pandas)
+    benchmark("Threading Processing", Rolling_with_Threading, df, Calculate_Metrics_for_Symbol_Pandas)
+    benchmark("Multiprocessing Processing", Rolling_with_MultiProcessing, df, Calculate_Metrics_for_Symbol_Pandas)
+    
+    print("\n===== Benchmarking Polars =====")
+    df = load_csv_with_polars(data_path)
+    benchmark("Sequential Processing", Rolling_Sequential, df, Calculate_Metrics_for_Symbol_Polars)
+    benchmark("Threading Processing", Rolling_with_Threading, df, Calculate_Metrics_for_Symbol_Polars)
+    benchmark("Multiprocessing Processing", Rolling_with_MultiProcessing, df, Calculate_Metrics_for_Symbol_Polars)
