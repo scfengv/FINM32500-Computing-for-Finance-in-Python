@@ -1,6 +1,6 @@
 import socket
 import json
-
+import threading
 
 # Order Manager TCP Connection deets
 HOST = "localhost"
@@ -55,11 +55,9 @@ def run_ordermanager():
         s.listen()
         print(f"OrderManager listening on {HOST}:{PORT}")
 
-
         while True:
             conn, addr = s.accept()
-            # single-threaded is fine for assignment; or spin a thread if you want
-            handle_client(conn, addr)
+            threading.Thread(target=handle_client, args=(conn, addr), daemon=True).start()
 
 if __name__ == "__main__":
     run_ordermanager()
