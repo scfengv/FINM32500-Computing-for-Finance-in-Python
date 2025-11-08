@@ -57,6 +57,8 @@ def run_ordermanager():
 
         while True:
             conn, addr = s.accept()
+            # putting each client in its own thread
+            # while one is waiting on i/o, the release GIL and another thread can run
             threading.Thread(target=handle_client, args=(conn, addr), daemon=True).start()
 
 if __name__ == "__main__":
