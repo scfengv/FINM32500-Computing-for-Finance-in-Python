@@ -18,6 +18,7 @@ conn, addr = server.accept()
 print(f'Gateway Connected by {addr}')
 
 prices = {tk: 100.0 + random.random() * 5 for tk in ticks}
+
 while True:
     for tk in ticks:
         prices[tk] = round(prices[tk] * (1 + random.uniform(-0.001, 0.001)), 2)
