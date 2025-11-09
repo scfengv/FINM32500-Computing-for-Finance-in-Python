@@ -35,11 +35,18 @@ def handle_client(conn, addr):
                 del buf[:i+1]
                 if not raw:
                     continue
+
+                # decode json from strategy
                 try:
                     order = json.loads(raw.decode("utf-8"))
-                    print(f"Received Order: {order['action']} {order['ticker']} @ {order['price']:.2f} ({order['reason']})")
+                    print(
+                        f"Received Order {order['id']}: "
+                        f"{order['action']} {order['quantity']} {order['ticker']} "
+                        f"@ {order['price']:.2f}"
+                    )
                 except Exception as e:
                     print("OrderManager: bad message:", raw, e)
+
 
 def run_ordermanager():
     """
