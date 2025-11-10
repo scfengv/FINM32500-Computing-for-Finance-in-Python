@@ -30,8 +30,10 @@ except ImportError:
 
 
 # Configuration
-HOST = "localhost"
-PORT = 9000
+GATEWAY_HOST = "localhost"
+GATEWAY_PORT = 9000
+ORDERMANAGER_HOST = "localhost"
+ORDERMANAGER_PORT = 9001
 MESSAGE_DELIMITER = b"*"
 RECONNECT_BASE = 0.5
 RECONNECT_MAX = 5.0
@@ -50,8 +52,10 @@ Position = Literal["long", "short", None]
 @dataclass
 class Order:
     """Order message to be sent to OrderManager"""
+    id: str
     ticker: str
     action: Literal["BUY", "SELL"]
+    quantity: int
     price: float
     timestamp: float
     reason: str
@@ -114,8 +118,14 @@ class SignalGenerator:
         # Shared memory connection
         self.price_book: Optional[SharedPriceBook] = None
         
-        # Gateway connection
+        # Gateway connection (for sentiment)
         self.gateway_socket: Optional[socket.socket] = None
+        
+        # OrderManager connection (for sending orders)
+        self.ordermanager_socket: Optional[socket.socket] = None
+        
+        # Order ID counter
+        self.order_id_counter = 0
     
     def connect_to_shm(self):
         """Connect to shared memory to read prices"""
@@ -128,13 +138,21 @@ class SignalGenerator:
             self.price_book = SharedPriceBook(name=self.shm_name, create=False)
             print(f"Strategy: Connected to shared memory '{self.shm_name}'")
     
-    def connect_to_gateway(self, host: str = HOST, port: int = PORT):
+    def connect_to_gateway(self, host: str = GATEWAY_HOST, port: int = GATEWAY_PORT):
         """Connect to Gateway's news stream"""
         self.gateway_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.gateway_socket.settimeout(SOCKET_TIMEOUT)
         self.gateway_socket.connect((host, port))
         self.gateway_socket.settimeout(None)
         print(f"Strategy: Connected to Gateway at {host}:{port}")
+    
+    def connect_to_ordermanager(self, host: str = ORDERMANAGER_HOST, port: int = ORDERMANAGER_PORT):
+        """Connect to OrderManager to send orders"""
+        self.ordermanager_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.ordermanager_socket.settimeout(SOCKET_TIMEOUT)
+        self.ordermanager_socket.connect((host, port))
+        self.ordermanager_socket.settimeout(None)
+        print(f"Strategy: Connected to OrderManager at {host}:{port}")
     
     def parse_gateway_message(self, raw_msg: str):
         """
@@ -255,11 +273,16 @@ class SignalGenerator:
         
         return signal
     
-    def create_order(self, action: Literal["BUY", "SELL"], price: float) -> Order:
-        """Create an Order object"""
+    def create_order(self, action: Literal["BUY", "SELL"], price: float, quantity: int = 100) -> Order:
+        """Create an Order object with unique ID"""
+        self.order_id_counter += 1
+        order_id = f"ORD_{self.ticker}_{self.order_id_counter}_{int(time.time())}"
+        
         return Order(
+            id=order_id,
             ticker=self.ticker,
             action=action,
+            quantity=quantity,
             price=price,
             timestamp=time.time(),
             reason=f"MA crossover + sentiment agreement"
@@ -273,29 +296,34 @@ class SignalGenerator:
     
     def send_order(self, order: Order):
         """
-        Send order to OrderManager (stub - would need actual socket connection).
-        For now, just print the order.
+        Send order to OrderManager via TCP socket.
         """
         serialized = self.serialize_order(order)
         print(f"Strategy: ORDER SENT -> {serialized.decode('utf-8').strip()}")
+        
+        # Send to OrderManager
+        if self.ordermanager_socket:
+            try:
+                self.ordermanager_socket.sendall(serialized)
+            except Exception as e:
+                print(f"Strategy: Failed to send order to OrderManager: {e}")
         
         # Update position
         if order.action == "BUY":
             self.position = "long"
         elif order.action == "SELL":
             self.position = "short"
-        
-        # In a real implementation, you would send to OrderManager via socket:
-        # self.order_manager_socket.sendall(serialized)
     
-    def run(self, host: str = HOST, port: int = PORT):
+    def run(self, gateway_host: str = GATEWAY_HOST, gateway_port: int = GATEWAY_PORT,
+            ordermanager_host: str = ORDERMANAGER_HOST, ordermanager_port: int = ORDERMANAGER_PORT):
         """
         Main event loop:
         1. Connect to shared memory
         2. Connect to Gateway news stream
-        3. Read prices from shared memory
-        4. Receive sentiment from Gateway
-        5. Generate signals and trade when both agree
+        3. Connect to OrderManager
+        4. Read prices from shared memory
+        5. Receive sentiment from Gateway
+        6. Generate signals and trade when both agree
         """
         print(f"Strategy: Starting signal generator for {self.ticker}")
         
@@ -304,9 +332,16 @@ class SignalGenerator:
         
         # Connect to Gateway
         try:
-            self.connect_to_gateway(host, port)
+            self.connect_to_gateway(gateway_host, gateway_port)
         except Exception as e:
             print(f"Strategy: Failed to connect to Gateway: {e}")
+            return
+        
+        # Connect to OrderManager
+        try:
+            self.connect_to_ordermanager(ordermanager_host, ordermanager_port)
+        except Exception as e:
+            print(f"Strategy: Failed to connect to OrderManager: {e}")
             return
         
         try:
@@ -356,6 +391,12 @@ class SignalGenerator:
                 except Exception:
                     pass
             
+            if self.ordermanager_socket:
+                try:
+                    self.ordermanager_socket.close()
+                except Exception:
+                    pass
+            
             if self.price_book:
                 try:
                     self.price_book.close()
@@ -365,8 +406,10 @@ class SignalGenerator:
 
 def run_strategy(
     ticker: str = "AAPL",
-    host: str = HOST,
-    port: int = PORT,
+    gateway_host: str = GATEWAY_HOST,
+    gateway_port: int = GATEWAY_PORT,
+    ordermanager_host: str = ORDERMANAGER_HOST,
+    ordermanager_port: int = ORDERMANAGER_PORT,
     shm_name: str = "pricebook",
     short_window: int = SHORT_WINDOW,
     long_window: int = LONG_WINDOW,
@@ -378,8 +421,10 @@ def run_strategy(
     
     Args:
         ticker: The ticker symbol to trade
-        host: Gateway host
-        port: Gateway port
+        gateway_host: Gateway host
+        gateway_port: Gateway port
+        ordermanager_host: OrderManager host
+        ordermanager_port: OrderManager port
         shm_name: Shared memory name
         short_window: Short moving average window
         long_window: Long moving average window
@@ -394,7 +439,12 @@ def run_strategy(
         bullish_threshold=bullish_threshold,
         bearish_threshold=bearish_threshold,
     )
-    strategy.run(host=host, port=port)
+    strategy.run(
+        gateway_host=gateway_host,
+        gateway_port=gateway_port,
+        ordermanager_host=ordermanager_host,
+        ordermanager_port=ordermanager_port
+    )
 
 
 if __name__ == "__main__":
