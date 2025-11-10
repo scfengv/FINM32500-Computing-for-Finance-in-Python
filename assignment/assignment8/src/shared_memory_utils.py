@@ -1,5 +1,6 @@
 from multiprocessing import shared_memory
 import pickle
+import struct
 
 class SharedPriceBook:
     def __init__(self, name='pricebook', create=True):
@@ -13,13 +14,32 @@ class SharedPriceBook:
 
     def write(self, data): # Write dictionary {ticker: price}
         encoded = pickle.dumps(data)
-        self.shm.buf[:len(encoded)] = encoded
-        self.shm.buf[len(encoded):] = b'\x00' * (self.size - len(encoded))
+        data_len = len(encoded)
+        if data_len + 4 > self.size:  # 4 bytes for length prefix
+            raise ValueError(f"Data too large: {data_len} bytes > {self.size - 4} bytes")
+        
+        # Write length prefix (4 bytes)
+        length_bytes = struct.pack('I', data_len)
+        for i in range(4):
+            self.shm.buf[i] = length_bytes[i]
+        
+        # Write the encoded data
+        for i, byte in enumerate(encoded):
+            self.shm.buf[4 + i] = byte
 
     def read(self): # Read dict
-        raw = bytes(self.shm.buf).split(b'\x00', 1)[0]
-        if not raw:
+        # Read length prefix
+        length_bytes = bytes(self.shm.buf[0:4])
+        data_len = struct.unpack('I', length_bytes)[0]
+        
+        if data_len == 0:
             return {}
+        
+        if data_len > self.size - 4:
+            return {}  # Corrupted data
+        
+        # Read the actual data
+        raw = bytes(self.shm.buf[4:4 + data_len])
         return pickle.loads(raw)
 
     def update(self, ticker, price): # Update a ticker

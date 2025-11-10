@@ -357,15 +357,28 @@ class SignalGenerator:
                     # Update price buffer
                     self.price_buffer.add(price)
                     
+                    # Show progress while collecting data
+                    buffer_len = len(self.price_buffer)
+                    if buffer_len < self.long_window:
+                        if buffer_len % 5 == 0:  # Show every 5 prices
+                            print(f"Strategy: Collecting prices... {buffer_len}/{self.long_window} "
+                                  f"(need {self.long_window - buffer_len} more)")
+                    
                     # Check if we have enough data
-                    if len(self.price_buffer) >= self.long_window:
+                    if buffer_len >= self.long_window:
+                        if buffer_len == self.long_window:
+                            print(f"Strategy: ✓ Collected {self.long_window} prices! Now generating signals...")
                         # Generate signals
                         price_signal = self.generate_price_signal()
                         news_signal = self.generate_news_signal()
                         
-                        print(f"Strategy: Price={price:.2f}, "
-                              f"Short MA={self.price_buffer.get_ma(self.short_window):.2f}, "
-                              f"Long MA={self.price_buffer.get_ma(self.long_window):.2f}, "
+                        # Show debug info
+                        short_ma = self.price_buffer.get_ma(self.short_window)
+                        long_ma = self.price_buffer.get_ma(self.long_window)
+                        
+                        print(f"Strategy: Price=${price:.2f}, "
+                              f"Short MA=${short_ma:.2f}, "
+                              f"Long MA=${long_ma:.2f}, "
                               f"Sentiment={self.sentiment}, "
                               f"Price Signal={price_signal}, "
                               f"News Signal={news_signal}, "
@@ -378,6 +391,16 @@ class SignalGenerator:
                             # Create and send order
                             order = self.create_order(action, price)
                             self.send_order(order)
+                        else:
+                            # Explain why no trade
+                            if price_signal is None or news_signal is None:
+                                print("Strategy:   → No trade: waiting for valid signals")
+                            elif price_signal != news_signal:
+                                print(f"Strategy:   → No trade: signals disagree ({price_signal} vs {news_signal})")
+                            elif self.position == "long" and action == "BUY":
+                                print("Strategy:   → No trade: already long")
+                            elif self.position == "short" and action == "SELL":
+                                print("Strategy:   → No trade: already short")
         
         except KeyboardInterrupt:
             print("\nStrategy: Shutting down...")
