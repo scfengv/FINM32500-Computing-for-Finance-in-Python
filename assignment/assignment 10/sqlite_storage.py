@@ -31,7 +31,25 @@ def insert_tickers(conn: sqlite3.Connection, tickers_df: pd.DataFrame) -> None:
     """
     insert tickers from tickers.csv using existing ticker_id
     """
-    records = tickers_df.to_records(index=False)
+    df = tickers_df.copy()
+
+    # enforce dtypes here
+    df["ticker_id"] = df["ticker_id"].astype(int)
+    df["symbol"] = df["symbol"].astype(str)
+    df["name"] = df["name"].astype(str)
+    df["exchange"] = df["exchange"].astype(str)
+
+    # build list of tuples with pure Python types
+    records = [
+        (
+            int(row.ticker_id),
+            row.symbol,
+            row.name,
+            row.exchange,
+        )
+        for row in df.itertuples(index=False)
+    ]
+
     with conn:
         conn.executemany(
             """
@@ -44,25 +62,45 @@ def insert_tickers(conn: sqlite3.Connection, tickers_df: pd.DataFrame) -> None:
 
 def insert_prices(conn: sqlite3.Connection, prices_df: pd.DataFrame) -> None:
     """
-    insert OHLCV prices with cols timestamp (datetime64), symbol, open, high, low, close, volume
+    Insert OHLCV prices with prices_df columns timestamp, symbol, open, high, low, close, volume
     """
-    prices_df = prices_df.copy()
+    df = prices_df.copy()
 
-    # build symbol to ticker_id map
+    # 1) Build symbol -> ticker_id map from tickers table
     rows = conn.execute("SELECT ticker_id, symbol FROM tickers;").fetchall()
     sym_to_id = {symbol: ticker_id for (ticker_id, symbol) in rows}
 
-    missing_syms = set(prices_df["symbol"].unique()) - set(sym_to_id.keys())
+    # 2) Check that every symbol in prices has a ticker_id
+    missing_syms = set(df["symbol"].unique()) - set(sym_to_id.keys())
     if missing_syms:
         raise ValueError(f"Symbols in prices not found in tickers table: {missing_syms}")
 
-    prices_df["ticker_id"] = prices_df["symbol"].map(sym_to_id)
-    prices_df["timestamp"] = prices_df["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S")
+    df["ticker_id"] = df["symbol"].map(sym_to_id)
 
-    records = prices_df[
-        ["timestamp", "ticker_id", "open", "high", "low", "close", "volume"]
-    ].to_records(index=False)
+    # 3) Normalize types
+    df["timestamp"] = pd.to_datetime(df["timestamp"]).dt.strftime("%Y-%m-%d %H:%M:%S")
+    df["ticker_id"] = df["ticker_id"].astype(int)
+    df["open"] = df["open"].astype(float)
+    df["high"] = df["high"].astype(float)
+    df["low"] = df["low"].astype(float)
+    df["close"] = df["close"].astype(float)
+    df["volume"] = df["volume"].astype(int)
 
+    # 4) ❗ Build plain Python tuples instead of using .to_records()
+    records = [
+        (
+            row.timestamp,
+            int(row.ticker_id),
+            float(row.open),
+            float(row.high),
+            float(row.low),
+            float(row.close),
+            int(row.volume),
+        )
+        for row in df.itertuples(index=False)
+    ]
+
+    # 5) Insert
     with conn:
         conn.executemany(
             """
@@ -71,6 +109,7 @@ def insert_prices(conn: sqlite3.Connection, prices_df: pd.DataFrame) -> None:
             """,
             records,
         )
+
 
 
 # Query stuff

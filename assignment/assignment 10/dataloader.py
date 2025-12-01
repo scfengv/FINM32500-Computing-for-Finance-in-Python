@@ -51,6 +51,12 @@ def load_tickers(csv_path: str | Path) -> pd.DataFrame:
     if missing:
         raise ValueError(f"tickers.csv missing columns: {missing}")
 
+    # make sure types are correct and clean
+    df["ticker_id"] = df["ticker_id"].astype(int)
+    df["symbol"] = df["symbol"].astype(str)
+    df["name"] = df["name"].astype(str)
+    df["exchange"] = df["exchange"].astype(str)
+
     df = df.drop_duplicates(subset=["ticker_id", "symbol"]).reset_index(drop=True)
     return df[["ticker_id", "symbol", "name", "exchange"]]
 
