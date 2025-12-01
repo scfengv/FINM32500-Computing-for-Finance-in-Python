@@ -231,3 +231,6 @@ if __name__ == "__main__":
         sigs = br.generate_signals({"symbol": "BBB", "timestamp": base_time + timedelta(minutes=i), "price": px})
         for s in sigs:
             print(s)
+
+
+            
