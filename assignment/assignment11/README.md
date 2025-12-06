@@ -20,6 +20,8 @@ assignment11/
 │   ├── test_signal_generator.py
 │   └── test_backtest.py
 ├── results.ipynb
+├── lr_equity.png
+├── rf_equity.png
 ├── comparison.md
 └── README.md
 ```
