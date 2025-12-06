@@ -77,9 +77,4 @@ Random Forest performed better than Logistic Regression in both classification m
 Random Forest produced the strongest predictive and financial results, largely due to its ability to learn nonlinear patterns in short-term price movements. Logistic Regression performed modestly but still beat the benchmark.
 
 ## 5. Plots
-
-### Logistic Regression Equity Curve
-![LR Equity](lr_equity.png)
-
-### Random Forest Equity Curve
-![RF Equity](rf_equity.png)
+Plots can be found in `lr_equity.png` and `rf_equity.png` or `results.ipynb`.
